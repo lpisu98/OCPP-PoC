@@ -1,0 +1,66 @@
+/*
+ * SteVe - SteckdosenVerwaltung - https://github.com/steve-community/steve
+ * Copyright (C) 2013-2026 SteVe Community Team
+ * All Rights Reserved.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package de.rwth.idsg.steve.web.dto.ocpp;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static de.rwth.idsg.steve.config.ApiDocsConfiguration.ConfigurationKeyEnum_Read_Keys;
+import static de.rwth.idsg.steve.utils.StringUtils.splitByComma;
+
+/**
+ * @author Sevket Goekay <sevketgokay@gmail.com>
+ * @since 02.01.2015
+ */
+@Setter
+@Getter
+public class GetConfigurationParams extends MultipleChargePointSelect {
+
+    @Schema(
+        ref = ConfigurationKeyEnum_Read_Keys,
+        description = """
+            List of Configuration Keys predefined by Ocpp.
+            The documented keys are the superset of all keys defined in Ocpp versions 1.2, 1.5 and 1.6.
+            Therefore, not all possible keys apply to all Ocpp versions.
+            """
+    )
+    private List<String> confKeyList;
+
+    @Schema(description = "Comma separated sequence of Custom Configuration Keys")
+    private String commaSeparatedCustomConfKeys;
+
+    @JsonIgnore
+    public List<String> getAllKeys() {
+        List<String> fromPredefined = Objects.requireNonNullElse(confKeyList, Collections.emptyList());
+        List<String> fromCustom = splitByComma(commaSeparatedCustomConfKeys);
+
+        return Stream.of(fromPredefined, fromCustom)
+                     .flatMap(Collection::stream)
+                     .collect(Collectors.toList());
+    }
+}

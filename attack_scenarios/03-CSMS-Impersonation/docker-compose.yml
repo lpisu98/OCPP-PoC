@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+ 
+  impersonating_csms:
+    build: .
+    environment:
+      LISTEN_HOST: "0.0.0.0"
+      LISTEN_PORT: "9002"
+      FORCE_RESET: "true"
+      NUM_CYCLES: "5"
+
+  
+  cp-simulator:
+    build: ../../ocpp-base-poc/cp-simulator
+    command: [
+        "bun",
+        "src/cli/main.ts",
+        "--ws-url", "ws://impersonating_csms:9002/",
+        "--cp-id", "CP_BENIGN_001",
+        "--daemon",
+        "--scenario-template", "full-charging-cycle",
+        "--scenario-connector", "1"
+      ]
+
+  tcpdump:
+    image: nicolaka/netshoot
+    depends_on:
+      - impersonating_csms
+    command: "tcpdump -i eth0 -w /data/csms_impersonation_capture.pcap"
+    network_mode: service:impersonating_csms
+    volumes:
+      - $PWD/data:/data
