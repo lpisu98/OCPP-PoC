@@ -36,12 +36,6 @@ services:
       retries: 20
       start_period: 180s
     
-  # charge_point:
-  #   restart: unless-stopped
-  #   build: ./ocpp-charge-point-api
-  #   ports:
-  #     - "9000:9000"
-
   cp-simulator:
     restart: unless-stopped
     build: ./cp-simulator

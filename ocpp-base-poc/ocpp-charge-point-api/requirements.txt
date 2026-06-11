@@ -1,7 +1,0 @@
-FastAPI
-uvicorn
-websockets
-pydantic
-asyncio
-logging
-ocpp
