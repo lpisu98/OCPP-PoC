@@ -1,0 +1,51 @@
+services:
+
+  db:
+    image: mariadb:10.11.16
+    restart: unless-stopped
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      TZ: +00:00
+      MYSQL_DATABASE: stevedb
+      MYSQL_USER: steve
+      MYSQL_PASSWORD: changeme
+
+  app:
+    restart: unless-stopped
+    build: ../../ocpp-base-poc/steve
+    ports:
+      - "8180:8180"
+      - "8443:8443"
+    depends_on:
+      - db
+    volumes:
+      - ../../ocpp-base-poc/steve/:/code
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8180/steve/manager"]
+      interval: 60s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+
+  attacker:
+    build: .
+    environment:
+      TARGET_URL: "http://app:8180/steve"
+      USERNAME: "admin"
+      PASSWORD: "1234"
+      WORDLIST: "admin,password,1234,steve,changeme,root,test"
+      LOGIN_DELAY_S: "2"
+    depends_on:
+      app:
+        condition: service_healthy
+
+  tcpdump:
+    image: nicolaka/netshoot
+    depends_on:
+      - app
+    command: "tcpdump -i eth0 -w /data/csms_compromission_capture.pcap"
+    network_mode: service:app
+    volumes:
+      - ./data:/data

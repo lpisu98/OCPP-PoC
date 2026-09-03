@@ -1,0 +1,94 @@
+services:
+
+  db:
+    image: mariadb:10.11.16
+    restart: unless-stopped
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      TZ: +00:00
+      MYSQL_DATABASE: stevedb
+      MYSQL_USER: steve
+      MYSQL_PASSWORD: changeme
+    networks:
+      arp_lab:
+        ipv4_address: 172.30.0.5
+
+  app:
+    restart: unless-stopped
+    build: ../../ocpp-base-poc/steve
+    ports:
+      - "8180:8180"
+      - "8443:8443"
+    depends_on:
+      - db
+    environment:
+      DB_HOST: "db"
+      DB_PORT: "3306"
+      DB_NAME: "stevedb"
+      DB_USER: "steve"
+      DB_PASSWORD: "changeme"
+    volumes:
+      - ../../ocpp-base-poc/steve/:/code
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8180/steve/manager"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 60s
+    networks:
+      arp_lab:
+        ipv4_address: 172.30.0.10
+
+  attacker:
+    build: .
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      - net.ipv4.ip_forward=1
+    environment:
+      TARGET1_IP: "172.30.0.10"
+      TARGET2_IP: "172.30.0.20"
+      INTERFACE: "eth0"
+      SPOOF_INTERVAL_S: "2"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      arp_lab:
+        ipv4_address: 172.30.0.30
+
+  cp-simulator:
+    build: ../../ocpp-base-poc/cp-simulator
+    depends_on:
+      app:
+        condition: service_healthy
+      attacker:
+        condition: service_started
+    # Give the attacker a few seconds to discover this host and start ARP spoofing
+    # before the CP attempts its first WebSocket connection to the CSMS.
+    command: [
+        "/bin/sh", "-c",
+        "sleep 8 && exec bun src/cli/main.ts --ws-url ws://app:8180/steve/websocket/CentralSystemService/ --cp-id CP_BENIGN_001 --daemon --scenario-template full-charging-cycle --scenario-connector 1"
+      ]
+    networks:
+      arp_lab:
+        ipv4_address: 172.30.0.20
+
+  tcpdump:
+    image: nicolaka/netshoot
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - attacker
+    command: "tcpdump -i eth0 -w /data/arp_spoofing_capture.pcap"
+    network_mode: service:attacker
+    volumes:
+      - ./data:/data
+
+networks:
+  arp_lab:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
