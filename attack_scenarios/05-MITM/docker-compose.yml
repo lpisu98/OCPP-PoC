@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  mitm_proxy:
+    build: .
+    ports:
+      - "8081:8081"   # mitmweb UI (http://localhost:8081)
+    environment:
+      UPSTREAM_URL: "ws://app:8180/steve/websocket/CentralSystemService/"
+      LOG_FILE: "/app/captures/captures.jsonl"
+      MODIFY_MODE: "true"
+    volumes:
+      - ./logs:/app/captures
+      - ./ocpp_mitm_addon.py:/app/ocpp_mitm_addon.py
+    command: >
+      --mode reverse:http://app:8180
+      --listen-host 0.0.0.0
+      --listen-port 8080
+      --web-host 0.0.0.0
+      --web-port 8081
+      --no-web-open-browser
+      --set web_password=12345
+      -s /app/ocpp_mitm_addon.py
+
+  app:
+    build: ../../ocpp-base-poc/steve
+    ports:
+      - "8180:8180"
+      - "8443:8443"
+    environment:
+      DB_HOST: "db"
+      DB_PORT: "3306"
+      DB_NAME: "stevedb"
+      DB_USER: "steve"
+      DB_PASSWORD: "changeme"
+    depends_on:
+      - db
+    volumes:
+      - ../../ocpp-base-poc/steve/:/code
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8180/steve/manager"]
+      interval: 60s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+
+  db:
+    image: mariadb:10.11.16
+    restart: unless-stopped
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      TZ: +00:00
+      MYSQL_DATABASE: stevedb
+      MYSQL_USER: steve
+      MYSQL_PASSWORD: changeme
+  
+  cp-simulator:
+    build: ../../ocpp-base-poc/cp-simulator
+    depends_on:
+      app:
+        condition: service_healthy
+    command: [
+        "bun",
+        "src/cli/main.ts",
+        "--ws-url", "ws://mitm_proxy:8080/steve/websocket/CentralSystemService/",
+        "--cp-id", "CP_BENIGN_001",
+        "--daemon",
+        "--scenario-template", "full-charging-cycle",
+        "--scenario-connector", "1"
+      ]
+
+  tcpdump:
+    image: nicolaka/netshoot
+    depends_on:
+      - app
+    command: "tcpdump -i eth0 -w /data/mitm_capture.pcap"
+    network_mode: service:app
+    volumes:
+      - $PWD/data:/data
